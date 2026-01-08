@@ -208,7 +208,7 @@ def display_probability_chart(probabilities):
 
 # ====================== MAIN APP ======================
 def main():
-    st.title("Prof. Akinola project on APPLICATION OF MACHINE LEARNING FOR DISEASE MONITORING AND MANAGEMENT IN GREENHOUSE FARMING")
+    st.title("Prof. Akinola project on Design and Construction of a Crop Disease Detection Device in Open Field Farms Using Machine Learning.")
     st.title("By Sodimu Micheal (20191687)")
     st.markdown("Upload images of cucumber leaves to detect diseases instantly")
     
