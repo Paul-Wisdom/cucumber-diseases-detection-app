@@ -220,7 +220,7 @@ def main():
         model_path = MODEL_CONFIG['model_filename']
         if os.path.exists(model_path):
             size_kb = os.path.getsize(model_path) / 1024
-            st.success(f"✅ TFLite Model Ready ({size_kb:.1f}KB)")
+            st.success(f"✅ TFLite Model Ready")
             st.write(f"**Model:** Quantized INT8")
             st.write(f"**Input size:** {MODEL_CONFIG['input_size']}")
         else:
