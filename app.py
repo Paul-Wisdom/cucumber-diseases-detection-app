@@ -19,9 +19,9 @@ MODEL_CONFIG = {
     'input_size': (224, 224),
     'classes': ['Downy_mildew', 'Healthy', 'Powdery_mildew'],
     'class_display': {
-        'Downy_mildew': '🦠 Downy Mildew',
-        'Healthy': '🌿 Healthy',
-        'Powdery_mildew': '🍄 Powdery Mildew'
+        'Downy_mildew': 'Downy Mildew',
+        'Healthy': 'Healthy',
+        'Powdery_mildew': 'Powdery Mildew'
     }
 }
 
@@ -229,7 +229,7 @@ def main():
             for file in os.listdir('.'):
                 st.write(f"- {file}")
         
-        st.header("🌿 Diseases Detected")
+        st.header("Health Status Detected")
         for disease in MODEL_CONFIG['classes']:
             display_name = MODEL_CONFIG['class_display'][disease]
             st.write(f"{display_name}")
@@ -343,10 +343,8 @@ def main():
     st.markdown("---")
     st.markdown("""
     <div style="text-align: center; color: #666; padding: 1rem;">
-        <p><strong>🥒 Cucumber Disease Detection System</strong></p>
         <p>Model: Quantized TFLite INT8 | Training: 3,703 images | Framework: TensorFlow Lite</p>
         <p>Deployed on Streamlit Cloud | Optimized for fast inference</p>
-        <p><em>⚠️ For agricultural guidance only. Consult experts for severe cases.</em></p>
     </div>
     """, unsafe_allow_html=True)
 
