@@ -15,7 +15,7 @@ st.set_page_config(
 
 # ====================== CONFIGURATION ======================
 MODEL_CONFIG = {
-    'model_filename': 'cucumber_model.h5',  # Your model file in Streamlit Cloud
+    'model_filename': 'cucumber_model_int8.tflite',  # Updated to your TFLite model
     'input_size': (224, 224),
     'classes': ['Downy_mildew', 'Healthy', 'Powdery_mildew'],
     'class_display': {
@@ -50,10 +50,10 @@ DISEASE_INFO = {
     }
 }
 
-# ====================== MODEL LOADING ======================
+# ====================== TFLITE MODEL LOADING ======================
 @st.cache_resource
-def load_model():
-    """Load the TensorFlow model from local file"""
+def load_tflite_model():
+    """Load the TensorFlow Lite model"""
     model_path = MODEL_CONFIG['model_filename']
     
     # Check if model exists
@@ -61,9 +61,8 @@ def load_model():
         st.error(f"❌ Model file '{model_path}' not found!")
         st.info(f"""
         **To fix this:**
-        1. Make sure 'cucumber_model.h5' is in your GitHub repository
+        1. Make sure 'cucumber_model_int8.tflite' is in your GitHub repository
         2. The file should be in the same directory as app.py
-        3. File size should be around 2.6GB
         
         **Current files in directory:**
         {os.listdir('.')}
@@ -71,41 +70,74 @@ def load_model():
         return None
     
     try:
-        # Load the model
-        with st.spinner("🔄 Loading model into memory..."):
-            model = tf.keras.models.load_model(model_path, compile=False)
-            file_size = os.path.getsize(model_path) / (1024**3)
-            st.success(f"✅ Model loaded successfully! ({file_size:.1f}GB)")
-            return model
+        # Load TFLite model
+        with st.spinner("🔄 Loading TFLite model..."):
+            interpreter = tf.lite.Interpreter(model_path=model_path)
+            interpreter.allocate_tensors()
+            
+            # Get model details
+            input_details = interpreter.get_input_details()
+            output_details = interpreter.get_output_details()
+            
+            file_size = os.path.getsize(model_path) / 1024  # KB
+            
+            st.success(f"✅ TFLite model loaded successfully! ({file_size:.1f}KB)")
+            
+            return {
+                'interpreter': interpreter,
+                'input_details': input_details,
+                'output_details': output_details
+            }
+            
     except Exception as e:
-        st.error(f"Failed to load model: {str(e)}")
+        st.error(f"Failed to load TFLite model: {str(e)}")
         return None
 
 # ====================== IMAGE PROCESSING ======================
 def preprocess_image(image):
-    """Preprocess image for model prediction"""
-    # Resize
+    """Preprocess image for TFLite model"""
+    # Resize to model input size
     image = image.resize(MODEL_CONFIG['input_size'])
     
     # Convert to RGB if needed
     if image.mode != 'RGB':
         image = image.convert('RGB')
     
-    # Normalize
-    image_array = np.array(image) / 255.0
+    # Convert to numpy array
+    image_array = np.array(image, dtype=np.float32)
+    
+    # Check if model expects normalized input (0-1) or (-1 to 1)
+    # For int8 models, we typically need to convert to int8 range
+    image_array = image_array / 255.0
     
     # Add batch dimension
     image_array = np.expand_dims(image_array, axis=0)
     
     return image_array
 
-def predict_disease(model, image):
-    """Make prediction on image"""
-    # Preprocess
+def predict_disease_tflite(model_info, image):
+    """Make prediction using TFLite model"""
+    # Preprocess image
     processed_image = preprocess_image(image)
     
-    # Predict
-    predictions = model.predict(processed_image, verbose=0)[0]
+    # Get model components
+    interpreter = model_info['interpreter']
+    input_details = model_info['input_details']
+    output_details = model_info['output_details']
+    
+    # Set input tensor
+    interpreter.set_tensor(input_details[0]['index'], processed_image)
+    
+    # Run inference
+    interpreter.invoke()
+    
+    # Get output tensor
+    output_data = interpreter.get_tensor(output_details[0]['index'])
+    predictions = output_data[0]
+    
+    # Apply softmax if model doesn't have it
+    if not np.allclose(np.sum(predictions), 1.0):
+        predictions = tf.nn.softmax(predictions).numpy()
     
     # Get results
     top_idx = np.argmax(predictions)
@@ -186,8 +218,10 @@ def main():
         # Model status
         model_path = MODEL_CONFIG['model_filename']
         if os.path.exists(model_path):
-            size_gb = os.path.getsize(model_path) / (1024**3)
-            st.success(f"✅ Model Ready ({size_gb:.1f}GB)")
+            size_kb = os.path.getsize(model_path) / 1024
+            st.success(f"✅ TFLite Model Ready ({size_kb:.1f}KB)")
+            st.write(f"**Model:** Quantized INT8")
+            st.write(f"**Input size:** {MODEL_CONFIG['input_size']}")
         else:
             st.warning("⚠️ Model not found in directory")
             st.write("**Files present:**")
@@ -205,8 +239,9 @@ def main():
         st.write("• Supported: JPG, PNG, JPEG")
         
         st.header("ℹ️ About")
-        st.write("Model: CNN trained on 3,703 cucumber leaf images")
+        st.write("Model: Quantized TFLite CNN")
         st.write("Accuracy: ~96% (validation)")
+        st.write("Optimized for mobile/web deployment")
     
     # Main content area
     col1, col2 = st.columns([1, 1])
@@ -241,17 +276,17 @@ def main():
         
         if uploaded_file:
             if st.button("🧪 Analyze Disease", type="primary", use_container_width=True):
-                with st.spinner("Initializing model..."):
-                    # Load model
-                    model = load_model()
+                with st.spinner("Initializing TFLite model..."):
+                    # Load TFLite model
+                    model_info = load_tflite_model()
                     
-                    if model:
+                    if model_info:
                         try:
                             # Process image
                             image = Image.open(uploaded_file)
                             
                             # Make prediction
-                            disease, confidence, all_probs = predict_disease(model, image)
+                            disease, confidence, all_probs = predict_disease_tflite(model_info, image)
                             
                             # Display results
                             display_disease_info(disease, confidence)
@@ -281,10 +316,21 @@ def main():
                                 else:
                                     st.metric("Certainty", "Moderate")
                             
+                            # Inference info
+                            with st.expander("⚡ Inference Details"):
+                                input_details = model_info['input_details'][0]
+                                output_details = model_info['output_details'][0]
+                                st.write(f"**Input shape:** {input_details['shape']}")
+                                st.write(f"**Input dtype:** {input_details['dtype']}")
+                                st.write(f"**Output shape:** {output_details['shape']}")
+                                st.write(f"**Output dtype:** {output_details['dtype']}")
+                                st.write("**Note:** Model uses 8-bit integer quantization")
+                            
                         except Exception as e:
                             st.error(f"Prediction error: {str(e)}")
+                            st.exception(e)
                     else:
-                        st.error("Model failed to load. Check if 'cucumber_model.h5' is in the repository.")
+                        st.error("TFLite model failed to load. Check if 'cucumber_model_int8.tflite' is in the repository.")
             
             else:
                 st.info("👆 Click 'Analyze Disease' to begin")
@@ -297,8 +343,8 @@ def main():
     st.markdown("""
     <div style="text-align: center; color: #666; padding: 1rem;">
         <p><strong>🥒 Cucumber Disease Detection System</strong></p>
-        <p>Model: 2.6GB CNN | Training: 3,703 images | Framework: TensorFlow</p>
-        <p>Deployed on Streamlit Cloud</p>
+        <p>Model: Quantized TFLite INT8 | Training: 3,703 images | Framework: TensorFlow Lite</p>
+        <p>Deployed on Streamlit Cloud | Optimized for fast inference</p>
         <p><em>⚠️ For agricultural guidance only. Consult experts for severe cases.</em></p>
     </div>
     """, unsafe_allow_html=True)
